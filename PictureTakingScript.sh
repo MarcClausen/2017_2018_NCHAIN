@@ -6,10 +6,12 @@ while :
 do
 time_stamp=$(date +'%Y%m%d%H%M%S')
 
-
+#Everything is contained in this function
 main()
 {
 
+# This function purges any processes interacting with the camera modules.
+# To better make sure we have no loose ends / collisions.
 nuke_camproc()
 {
   pkill -f 'Backupper.sh'
@@ -23,40 +25,45 @@ nuke_camproc()
   done
 }
 
-echo "contents of activatorfile:"
-cat /tmp/activatorfile
-echo "content shown above this line"
+# Download the file to trigger picture taking: activatorfile. This has no content.
+# The pic_settings file contains parameters for the camera.
 sleep 2
 curl -H "x-secret: SUPERSECRET_SUPERKEY" xxx.xxx.xxx.xxx:xxxx/activatorfile > /tmp/activatorfile &
 sleep 4
 
 curl -H "x-secret: SUPERSECRET_SUPERKEY" xxx.xxx.xxx.xxx:xxxx/pic_settings > /tmp/pic_settings &
 sleep 4
+# sleep (waiting time) is inserted to provide some slack.
+
 
 # Test if activator file exists, and run picture taking if so
-# Detector code starts
 if cat /tmp/activatorfile | grep A01 ;
 then
-nuke_camproc
-rm /tmp/activatorfile
+nuke_camproc #again purging any processes, if they have hung from an earlier/interrupted job.
+rm /tmp/activatorfile #eat the activator file, as we are beginning the picture taking job.
 echo -e "beginning picture taking"
+
+# Also delete the activator file from remote location, to confirm the job is accepted.
 curl -H "x-secret: SUPERSECRET_SUPERKEY" -X POST -d asd xxx.xxx.xxx.xxx:xxxx/activatorfile &
-sleep 4
+sleep 4 #slack
 
 #run with old settings unless new are present
   mv /tmp/pic_settings /tmp/pic_settings_old
   params_jpg=$(cat /tmp/pic_settings_old)
   localdir=/tmp/pic_download/MT""$time_stamp""/
-#Defining variables
 
-ip1=1
 
+ip1=1 # this is used in the'camerize' function below
+
+# Ready folders
 rm -rf /tmp/pic_download/*
 mkdir -p $localdir
 
+
+# Function to do picture taking stuff. Does the same for each IP address.
+# The '&' helps to parallelize the individual camera jobs.
 camerize()
 {
-  #Beginning of picture taking
 for ((ip2=1;ip2<=180;ip2++)); do
 full_ip=192.168."$ip1"."$ip2"
 params_name=""Cam""$ip2""_MT""$time_stamp"".jpg""
@@ -68,14 +75,18 @@ localpic=""$localdir""Cam""$ip2""_MT""$time_stamp"".jpg
   sleep 0.1
   ssh -o "StrictHostKeyChecking no" pi@"$full_ip" "mkdir -p /tmp/camera_jpg" &
   sleep 0.1
-#Run camera
+  
+#Run camera command
 ssh -o "StrictHostKeyChecking no" pi@"$full_ip" "raspistill ""$full_params"" " &
 sleep 10 && scp -o "StrictHostKeyChecking no" pi@"$full_ip":/tmp/camera_jpg/*.jpg ""$localpic"" &
 done
 }
+
+# execute the function above and wait 20 seconds before starting to detect QR codes.
 camerize & 
 sleep 20
 
+# Detect QR codes
   for ((ip2=1;ip2<=180;ip2++)); do
   full_ip=192.168."$ip1"."$ip2"
     params_name=""Cam""$ip2""_MT""$time_stamp"".jpg""
@@ -100,7 +111,7 @@ sleep 20
   curl -H "x-secret: SUPERSECRET_SUPERKEY" -T /tmp/pic_download/MT""$time_stamp"".tar.md5 xxx.xxx.xxx.xxx:xxxx &
   sleep 4
 
- # restoring backup script
+ # restoring backup routine
  sh /home/user1/DEPLOY2018/PRODUCTION/Backupper.sh &
  
  
@@ -108,7 +119,7 @@ sleep 20
 else echo "running tests"
 
 
-#running ssh tests
+# running ssh camera tests
         ip1=1
         sleep 2 && rm /tmp/selftest*
         touch /tmp/selftest""$time_stamp""
